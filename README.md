@@ -30,7 +30,7 @@ Exporting from a source envirnment, committing to git, deploying to target envir
 
 ### Jobs
 ### Requirements
-(Databrics CLI)[https://docs.databricks.com/dev-tools/cli/index.html] and a configured profile. In the example the profile name is AZDO
+[Databrics CLI](https://docs.databricks.com/dev-tools/cli/index.html) and a configured profile. In the example the profile name is AZDO
 
 ### Process
 The config file (sample/jobs/jobs_params.json) has a list of environements and jobs for a project.
@@ -64,10 +64,10 @@ Deploy sql queries to target env
 ./deploysqlqueries.sh -c "sqlqueries/queries_dev_params.json"  -s "sqlqueries/src" -t "DATABRICKSTOKEN" -u "https://adb-XXXXXXXXXXXXXXXXXX.XXXXX.azuredatabricks.net" -e "dev"
 ```
 
-## (Scripts)[https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/scripts]
+## [Scripts](https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/scripts)
 Bash scripts for pulling/deploying queries/jobs.
 
-## (Azure devops templates)[https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/pipeline-templates]
+## [Azure devops templates](https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/pipeline-templates])
 The scripts can be used as part of AZDO templates and/or pipelines. In the azdo_templates folder there are some templates for Databricks CI/CD pipelines.
 
 
