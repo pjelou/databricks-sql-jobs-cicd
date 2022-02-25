@@ -1,0 +1,61 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for deploying all the template jobs in a certain directory to DataBricks
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: databricksToken
+    type: string
+    default: ''
+
+  - name: dataBricksURL
+    type: string
+    default: ''
+
+  - name: dataBricksClusterName
+    type: string
+    default: ''
+
+  - name: envName
+    type: string
+    default: ''
+
+  - name: jobsDirPath
+    type: string
+    default: ''
+
+  - name: branchName
+    type: string
+    default: ''
+
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      architecture: 'x64'
+
+  - bash: |
+      python -m pip install --upgrade pip
+      pip install setuptools wheel
+    displayName: 'install python tools'
+
+  - bash: |
+      pip install databricks-cli
+    displayName: 'install databricks-cli'
+
+  - task: riserrad.azdo-databricks.azdo-databricks-configuredatabricks.configuredatabricks@0
+    displayName: 'configure databricks cli'
+    inputs:
+      url:  '${{ parameters.dataBricksURL}}'
+      token: '${{ parameters.databricksToken}}'
+
+  - template: createDatabricksScripts.yml
+    parameters:
+      scrpitsDirectoryName: 'devops_databricks_scripts'
+
+  - task: Bash@3
+    displayName: 'deploy databricks jobs from ${{ parameters.jobsDirPath }}'
+    inputs:
+      targetType: filePath
+      filePath: devops_databricks_scripts/deployjobs.sh
+      arguments: '-c "${{ parameters.dataBricksClusterName}}" -e "${{ parameters.envName}}" -b "${{ parameters.branchName }}" -s "${{ parameters.jobsDirPath }}"'
+      failOnStderr: true

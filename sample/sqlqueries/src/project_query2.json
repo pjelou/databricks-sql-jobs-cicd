@@ -1,0 +1,46 @@
+{
+  "name": "projectname_qery2",
+  "query": "SELECT * \nFROM {{env}}_table WHERE \n resource = '{{resources}}'",
+  "description": "",
+  "data_source_id": "TBD",
+  "schedule": {
+    "time": "11:00",
+    "until": null,
+    "version": 2,
+    "interval": 86400,
+    "day_of_week": null
+  },
+  "tags": [
+    "projectname",
+    "dropdown"
+  ],
+  "options": {
+    "run_as_role": "viewer",
+    "apply_auto_limit": true,
+    "parameters": [
+      {
+  "queryId": "projectname_query1",
+  "title": "resources",
+  "name": "resources",
+  "type": "query",
+  "global": false,
+  "locals": [],
+  "urlPrefix": "p_",
+  "value": [],
+  "$$value": []
+},
+
+      {
+        "enumOptions": "dev",
+        "title": "env",
+        "name": "env",
+        "type": "enum",
+        "global": false,
+        "locals": [],
+        "urlPrefix": "p_",
+        "value": "dev",
+        "$$value": "dev"
+      }
+    ]
+  }
+}

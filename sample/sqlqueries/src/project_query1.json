@@ -1,0 +1,37 @@
+{
+  "name": "projectname_query1",
+  "query": "select *f rom {{env}}_table;",
+  "description": "",
+  "data_source_id": "TBD",
+  "schedule": null,
+  "tags": [
+    "projectname"
+  ],
+  "options": {
+    "run_as_role": "viewer",
+    "apply_auto_limit": true,
+    "parameters": [
+      {
+        "title": "Lookback (Days)",
+        "name": "Lookback (Days)",
+        "type": "number",
+        "global": false,
+        "locals": [],
+        "urlPrefix": "p_",
+        "value": 7,
+        "$$value": 7
+      },
+      {
+        "enumOptions": "dev",
+        "title": "env",
+        "name": "env",
+        "type": "enum",
+        "global": false,
+        "locals": [],
+        "urlPrefix": "p_",
+        "value": "dev",
+        "$$value": "dev"
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+    "environments": {
+        "dev": {
+            "data_source_name": "dev-analytics"
+        },
+        "qa": {
+            "data_source_name": "qa-analytics"
+        },
+        "prod": {
+            "data_source_name": "prod-analysts"
+        }
+    },
+    "queries": [
+        {
+            "name": "dev_projectname_query1",
+            "schedule": true
+        },
+        {
+            "name": "dev_projectname_query2",
+            "schedule": true
+        }
+    ]
+}

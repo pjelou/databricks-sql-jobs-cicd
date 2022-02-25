@@ -1,0 +1,49 @@
+{
+  "name": "projectname_dev_job1",
+  "email_notifications": {
+    "no_alert_for_skipped_runs": false
+  },
+  "timeout_seconds": 0,
+  "max_concurrent_runs": 1,
+  "tasks": [
+    {
+      "task_key": "feature_engineering",
+      "depends_on": [
+        {
+          "task_key": "data_engineering"
+        }
+      ],
+      "notebook_task": {
+        "notebook_path": "/Repos/projectname/develop/data_sci/src/feature_engineering/feature_engineering"
+      },
+      "existing_cluster_id": "1124-XXXXX-782kbqen",
+      "timeout_seconds": 0,
+      "email_notifications": {}
+    },
+    {
+      "task_key": "data_engineering",
+      "notebook_task": {
+        "notebook_path": "/Repos/projectname/develop/data-eng/src/data_engineering"
+      },
+      "existing_cluster_id": "1124-XXXXX-782kbqen",
+      "timeout_seconds": 0,
+      "email_notifications": {}
+    },
+    {
+      "task_key": "model_inference",
+      "depends_on": [
+        {
+          "task_key": "feature_engineering"
+        }
+      ],
+      "notebook_task": {
+        "notebook_path": "/Repos/projectname/develop/data_sci/src/inference/inference"
+      },
+      "existing_cluster_id": "1124-XXXXX-782kbqen",
+      "timeout_seconds": 0,
+      "email_notifications": {}
+    }
+  ],
+  "job_clusters": [],
+  "format": "MULTI_TASK"
+}

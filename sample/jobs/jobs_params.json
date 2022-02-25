@@ -1,0 +1,21 @@
+{
+    "environments": {
+        "dev": {
+            "cluster_name": "dev-cluster",
+            "branch_name": "develop"
+        },
+        "qa": {
+            "cluster_name": "qa-cluster",
+            "branch_name": "release"
+        },
+        "prod": {
+            "cluster_name": "prod-cluster",
+            "branch_name": "main"
+        }
+    },
+    "jobs": [
+        "projectname_dev_job1",
+        "projectname_dev_job2",
+        "projectname_dev_job3"
+    ]
+}

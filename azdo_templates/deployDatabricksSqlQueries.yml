@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for deploying sql queries from a parameter file to DataBricks
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: databricksToken
+    type: string
+    default: ''
+
+  - name: dataBricksURL
+    type: string
+    default: ''
+
+  - name: queriesConfigFilePath
+    type: string
+    default: ''
+
+  - name: queriesFilesPath
+    type: string
+    default: ''
+
+  - name: envName
+    type: string
+    default: ''
+
+
+steps:
+  - template: createDatabricksScripts.yml
+    parameters:
+      scrpitsDirectoryName: 'devops_databricks_scripts'
+
+  - task: Bash@3
+    displayName: 'deploy databricks sql queries'
+    inputs:
+      targetType: filePath
+      filePath: devops_databricks_scripts/deploysqlqueries.sh
+      arguments: '-c "${{ parameters.queriesConfigFilePath}}"  -s "${{ parameters.queriesFilesPath}}" -t "${{ parameters.databricksToken}}" -u "${{ parameters.dataBricksURL}}" -e "${{ parameters.envName}}"'
+      failOnStderr: true
