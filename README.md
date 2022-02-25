@@ -67,7 +67,7 @@ Deploy sql queries to target env
 ## (Scripts)[https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/scripts]
 Bash scripts for pulling/deploying queries/jobs.
 
-## (Azure devops templates)[https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/azdo_templates]
+## (Azure devops templates)[https://github.com/pjelou/databricks-sql-jobs-cicd/tree/feature/scripts/pipeline-templates]
 The scripts can be used as part of AZDO templates and/or pipelines. In the azdo_templates folder there are some templates for Databricks CI/CD pipelines.
 
 
@@ -89,8 +89,9 @@ pr: none
 resources:
   repositories:
   - repository: AzurePipelineTemplates
-    type: git
-    name: OrgName/DevOps
+    type: github
+    name: pjelou/databricks-sql-jobs-cicd
+    endpoint: GihubServiceConnection
     ref : refs/heads/main
 
 variables:
