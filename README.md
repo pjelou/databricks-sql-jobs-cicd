@@ -65,7 +65,10 @@ Deploy sql queries to target env
 ```
 
 ## Azure devops templates
+The scripts can be used as part of AZDO templates and/or pipelines. In the azdo_templates folder there are some templates for Databricks CI/CD pipelines.
 
+
+getAzureDatabricksTokenJob.yml - is specific to Azure. The others are agnostic to the way Databricks is run
 
 ## Sample Azure devops pipeline
 ```
@@ -121,7 +124,7 @@ stages:
                     - template:  pipeline-templates/databricks-git-pull.yml@AzurePipelineTemplates
                       parameters:
                         dataBricksURL: '$(DatabricksURL}'
-                        repoId: '3282692936536291'
+                        repoId: '1234567891011'
                         repoBranch: 'develop'
                         databricks_git_token: '$(databricks-git-token)'
 
@@ -194,7 +197,7 @@ stages:
                     - template:  pipeline-templates/databricks-git-pull.yml@AzurePipelineTemplates
                       parameters:
                         dataBricksURL: '$(DatabricksURL}'
-                        repoId: '3282692936536294'
+                        repoId: '12345678910111213'
                         repoBranch: 'release'
                         databricks_git_token: '$(databricks-git-token)'
 
@@ -259,10 +262,10 @@ stages:
 ```
 
 ## Limitations
-The scripts assume following a certain naming format
-The sql/job scripts will fail if there are multiple jobs/queries with the same name.
-The jobs are assumed to use the same cluster for all jobs/taks/sub-tasks in the target environment
-The sql queries are assumed to use the same data source for all queries in the target environment.
+1. The scripts assume following a certain naming format
+2. The sql/job scripts will fail if there are multiple jobs/queries with the same name.
+3. The jobs are assumed to use the same cluster for all jobs/taks/sub-tasks in the target environment
+4. The sql queries are assumed to use the same data source for all queries in the target environment.
 
 ## Contributing
 Make a PR to this repo or fork it and make a better one! Any contributions are welcome.
