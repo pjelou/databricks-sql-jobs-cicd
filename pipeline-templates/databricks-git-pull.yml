@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for updating a configuration of a Databricks git repo forcing a sync with git
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: dataBricksURL
+    type: string
+    default: ''
+
+  - name: repoId
+    type: string
+    default: ''
+
+  - name: repoBranch
+    type: string
+    default: ''
+
+  - name: databricks_git_token
+    type: string
+    default: ''
+
+steps:
+  - ${{ if and(ne(parameters.repoId, ''), ne(parameters.repoBranch, ''), ne(parameters.dataBricksURL, ''), ne(parameters.databricks_git_token, ''))  }}:
+    - bash: |
+        url="${{ parameters.dataBricksURL }}/api/2.0/repos/${{ parameters.repoId }}"
+        echo $url
+        curl -X PATCH $url -H "Authorization: Bearer ${{ parameters.databricks_git_token }}" -H "Content-Type: application/json" -d '{"branch": "${{ parameters.repoBranch }}" }' | jq . > resp.json
+        cat resp.json
+        id=$(jq .id resp.json)
+        echo $id
+        if [ "$id" != ${{ parameters.repoId }} ]; then  exit 1; fi
+      displayName: 'updating git repo ${{ parameters.repoId }} branch ${{ parameters.repoBranch }}'

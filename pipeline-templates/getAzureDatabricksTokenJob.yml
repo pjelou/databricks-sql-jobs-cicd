@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for retreiveing a databricks bearer token from azure databricks and exporting it as an output variable to be
+# used in consequent jobs
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: spAppId
+    type: string
+    default: ''
+
+  - name: spPassword
+    type: string
+    default: ''
+
+  - name: ResourceGroupName
+    type: string
+    default: ''
+
+  - name: DatabricksWorkspaceName
+    type: string
+    default: ''
+
+  - name: SubscriptionId
+    type: string
+    default: ''
+
+  - name: TenantId
+    type: string
+    default: ''
+
+  - name: AzureRegion
+    type: string
+    default: ''
+
+  - name: JobName
+    type: string
+    default: 'getdbtoken'
+
+
+jobs:
+  - job: ${{ parameters.JobName }}
+    displayName: "get databricks token for ${{ parameters.DatabricksWorkspaceName }}"
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - checkout: none
+
+      - task: DataThirstLtd.databricksDeployScriptsTasks.databricksDeployCreateBearer.databricksDeployCreateBearer@0
+        displayName: 'Databricks Bearer Token'
+        inputs:
+          applicationId: ${{ parameters.spAppId }}
+          spSecret: ${{ parameters.spPassword }}
+          resourceGroup: ${{ parameters.ResourceGroupName }}
+          workspace: ${{ parameters.DatabricksWorkspaceName }}
+          subscriptionId: ${{ parameters.SubscriptionId }}
+          tenantId: ${{ parameters.TenantId }}
+          region: ${{ parameters.AzureRegion }}
+
+      - bash: |
+          databricksToken="$(BearerToken)"
+          echo "##vso[task.setvariable variable=BearerToken;isoutput=true]$databricksToken"
+        name: outputBearerToken
+        displayName: 'export token: outputBearerToken.BearerToken output variable'

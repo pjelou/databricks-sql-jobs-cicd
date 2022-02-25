@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for pulling sql queries from a parameter file from DataBricks and pushing to git
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: databricksToken
+    type: string
+    default: ''
+
+  - name: dataBricksURL
+    type: string
+    default: ''
+
+  - name: queriesConfigFilePath
+    type: string
+    default: ''
+
+steps:
+  - bash: |
+      branchName=$(echo  $(Build.SourceBranch) | cut -f 3- -d '/')
+      git checkout $branchName
+    displayName: 'change branch'
+
+  - template: createDatabricksScripts.yml
+    parameters:
+      scrpitsDirectoryName: 'devops_databricks_scripts'
+
+  - task: Bash@3
+    displayName: 'pull databricks sql queries'
+    inputs:
+      targetType: filePath
+      filePath: devops_databricks_scripts/pullsqlqueries.sh
+      arguments: '-c "${{ parameters.queriesConfigFilePath}}" -t "${{ parameters.databricksToken}}" -u "${{ parameters.dataBricksURL}}"'
+      failOnStderr: true
+
+  - bash: |
+      rm -rf devops_databricks_scripts
+    displayName: 'delete devops scripts directory'
+
+  - bash: |
+      git config  user.email "pipeline@na.com"
+      git config  user.name "AZDO Pipeline"
+      git pull
+      git add -A
+      git commit -am "Databricks queries [skip ci]"
+      git push
+    displayName: 'push to git'

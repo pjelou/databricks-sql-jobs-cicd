@@ -1,0 +1,422 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for creating databricks scripts since we can't use scripts from templates repo
+# https://docs.microsoft.com/en-us/azure/devops/pipelines/process/templates?view=azure-devops#use-other-repositories
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: scrpitsDirectoryName
+    type: string
+    default: 'devops_databricks_scripts'
+
+steps:
+  - bash: |
+      mkdir  ${{ parameters.scrpitsDirectoryName }}
+    displayName: 'create devops scripts dir'
+
+  - bash: |
+      cat > ${{ parameters.scrpitsDirectoryName }}/pullsqlqueries.sh <<- "EOF"
+      #set -o xtrace
+      function getqueryfile ()
+      {
+        local sourcequeryname=$1
+        local destqueryname=$(echo $sourcequeryname | cut -f 2- -d '_')
+        local promoteschedule=$2
+
+        echo "   Pulling config for "$sourcequeryname
+        local url="${databricksurl}/api/2.0/preview/sql/queries?q=${sourcequeryname}"
+        curl -s -H "Authorization: Bearer $token" -X GET $url | jq --arg sourcequeryname "$sourcequeryname" '.results[] | select(.name == $sourcequeryname)' > ${sourcequeryname}.json
+
+        if [ -s ${sourcequeryname}.json ]; then
+            echo "   Pulled config for ${sourcequeryname}"
+        else
+            echo "   Could not pull config for ${sourcequeryname}"
+            echo "   Check that the ${sourcequeryname} is shared and name is valid"
+            echo "Failed pulling config for ${sourcequeryname}" >&2
+            exit 2
+        fi
+
+        echo "   Processing schedule"
+        if [ "$promoteschedule" == "true" ]
+        then
+            local schedule=$(jq -r .schedule  ${sourcequeryname}.json)
+        else
+            local schedule="null"
+        fi
+
+        echo "   Processing datasource"
+        local data_source_id="TBD"
+
+        echo "   Processing query"
+        local query=$(jq -r .query  ${sourcequeryname}.json)
+
+        echo "   Processing tags"
+        local tags=$(jq -r .tags  ${sourcequeryname}.json)
+
+        echo "   Processing description"
+        local description=$(jq -r .description  ${sourcequeryname}.json)
+
+        echo "   Processing options"
+        local sourceoptions=$(jq -r '.options | del(.parameters[].parentQueryId)' ${sourcequeryname}.json)
+        local dependencyids=$(jq -r '.options.parameters[] | select(.queryId != null) | .queryId' ${sourcequeryname}.json)
+
+        if [ -z "$dependencyids" ]
+        then
+            echo "   no dependencies defined"
+            local options=$sourceoptions
+        else
+            echo "   Dependencies defined in source query"
+            local options=$sourceoptions
+
+            #Pull implicit dependencies if exist
+            for dependencyid in $dependencyids
+            do
+              echo "      Processing dependency $dependencyid"
+              local dependencyName=$(curl -s -H "Authorization: Bearer $token" -X GET ${databricksurl}/api/2.0/preview/sql/queries/$dependencyid | jq -r '.name')
+              echo "      Dependency name is $dependencyName"
+              local explicit=$(jq -r --arg dependencyName "$dependencyName" '.queries[] | select(.name == $dependencyName) | .name ' $configFile)
+              if [ -z "$explicit" ]
+              then
+                  echo "      Not found in config file list...retreiving"
+                  getqueryfile $dependencyName false
+              else
+                  echo "      Found in config file...skipping"
+              fi
+            done
+
+            # Update parameters
+            local sourceparameters=$(echo $sourceoptions | jq -r '.parameters')
+            echo "   Processing parameters"
+            echo "[]" >  ${destqueryname}.parameters.json
+            echo $sourceparameters |  jq -c '.[]' |
+            while IFS=$"\n" read -r parameterdefinition; do
+              local parametername=$(echo $parameterdefinition| jq -r '.name')
+              echo "      Processing parameter " $parametername
+              local queryId=$(echo $parameterdefinition| jq -r '.queryId')
+              if [  "$queryId" == "null" ]
+              then
+                  echo "         Simple parameter"
+                  jq --argjson parameterdefinition "$parameterdefinition" '. += [$parameterdefinition]' ${destqueryname}.parameters.json > ${destqueryname}.parameters.json.tmp && mv ${destqueryname}.parameters.json.tmp ${destqueryname}.parameters.json
+              else
+                  echo "         Dependency"
+                  local queryId=$(echo $parameterdefinition | jq -r '.queryId')
+                  echo "         Getting query name for " $queryId
+                  local queryName=$(curl -s -H "Authorization: Bearer $token" -X GET ${databricksurl}/api/2.0/preview/sql/queries/${queryId}| jq -r '.name')
+                  local queryName=$(echo $queryName | cut -f 2- -d '_')
+                  echo "         Updating queryName" $queryName
+                  local newparam=$(echo $parameterdefinition | jq -r --arg queryName "$queryName" '.value = [] | ."$$value" = [] | .queryId = $queryName ')
+                  echo "         Adding updated parameter to the file"
+                  jq --argjson newparam "$newparam" '. += [$newparam]' ${destqueryname}.parameters.json > ${destqueryname}.parameters.json.tmp && mv ${destqueryname}.parameters.json.tmp ${destqueryname}.parameters.json
+              fi
+            done
+
+            #Update options variable with parameters
+            local destparameters=$(jq -r '.' ${destqueryname}.parameters.json)
+            local options=$(echo $options | jq -r --argjson destparameters "$destparameters" '.parameters = $destparameters' )
+        fi
+
+        echo "   Creating output file for " $destqueryname
+        echo {} | jq --arg name "$destqueryname" --arg query "$query" --arg data_source_id "$data_source_id" --arg description "$description" --argjson options "$options" --argjson schedule "$schedule" --argjson tags "$tags" '. + {name: $name} + {query: $query} + {description: $description}+ {data_source_id: $data_source_id} + {schedule: $schedule} + {tags: $tags} + {options: $options}'  > $destqueryname.output.json
+        echo "   Moving queryfile"
+        mv $destqueryname.output.json sqlqueries/src/$destqueryname.json
+      }
+
+      ########### Main
+      while getopts c:t:u: flag
+      do
+          case "${flag}" in
+              c) configFile=${OPTARG};;
+              t) token=${OPTARG};;
+              u) databricksurl=${OPTARG};;
+          esac
+      done
+
+      rm -rf sqlqueries/src
+      rm -rf *.json
+      mkdir sqlqueries/src
+
+      #echo "Pulling queries"
+      #curl -s -H "Authorization: Bearer $token" -X GET ${databricksurl}/api/2.0/preview/sql/queries?page_size=250 > queries.json
+
+      jq -c '.queries[]' $configFile |
+      while IFS=$"\n" read -r qurydefinition; do
+        name=$(echo "$qurydefinition" | jq -r '.name')
+        schedule=$(echo "$qurydefinition" | jq -r '.schedule')
+        echo "Processing "$name
+        getqueryfile $name $schedule
+      done
+
+      rm -rf *.json
+      EOF
+    displayName: 'create sql getter script'
+
+  - bash: |
+      cat > ${{ parameters.scrpitsDirectoryName }}/deploysqlqueries.sh <<- "EOF"
+      #set -o xtrace
+      function deployquery ()
+      {
+          local sourcequeryname=$1
+          local shortQueryName=$(echo ${sourcequeryname} |cut -f 2- -d '_')
+          local destqueryname="${envName}_${shortQueryName}"
+          echo "   Deploying as "$destqueryname
+          local querySourceFile="${soruceDir}/${shortQueryName}.json"
+
+          # Check that query file exists
+          if [ -f "$querySourceFile" ]; then
+          echo "   $querySourceFile exists."
+          else
+          echo "   ${querySourceFile} not found"
+          echo "   Could not find query file for ${sourcequeryname} named   in ${soruceDir}"
+          echo "   Check that the query definition exists in direcoty"
+          echo "   ${querySourceFile} not found" >&2
+          exit 3
+          fi
+
+          local queryDestinationFile="${destDir}/${destqueryname}.json"
+
+          # Update name and datasource ID
+          echo "   Updating name and data_source_id in ${queryDestinationFile}"
+          jq --arg newName "${destqueryname}" --arg dataSourceID "${destinationDatasourceID}" '.name=$newName | .data_source_id=$dataSourceID' ${querySourceFile} >  ${queryDestinationFile}
+
+          # Update env parameter if defined
+          echo "   Updating env parameter if defined"
+          local envQueryParameter=$(jq -r '.options.parameters[] | select(.name == "env" and .type == "enum")' ${queryDestinationFile})
+          if [ -z "${envQueryParameter}" ]
+          then
+          echo "   env parameter not defined...skipping"
+          else
+          echo "   env parameter defined...updating to ${envName}"
+          jq --arg envName "${envName}" '(.options.parameters[] | select(.name == "env").value) = $envName |  (.options.parameters[] | select(.name == "env").enumOptions) = $envName | (.options.parameters[] | select(.name == "env")."$$value") = $envName' \
+            ${queryDestinationFile} > ${queryDestinationFile}.tmp && mv ${queryDestinationFile}.tmp ${queryDestinationFile}
+          fi
+
+          # Check if has dependencies
+          local dependencyNames=$(jq -r '.options.parameters[] | select(.queryId != null) | .queryId' ${queryDestinationFile})
+
+          if [ -z "$dependencyNames" ]
+          then
+          echo "   no dependencies defined"
+          else
+          echo "   Dependencies defined...processing"
+
+          for dependencyName in $dependencyNames
+          do
+            echo "      processing ${dependencyName}"
+            echo "      calling recursive deployment of dev_${dependencyName}"
+            deployquery "dev_${dependencyName}"
+
+            local destinationDependencyName="${envName}_${dependencyName}"
+            local dependencyURL="${databricksurl}/api/2.0/preview/sql/queries?q=${destinationDependencyName}"
+            echo "      fetching id for ${destinationDependencyName}"
+
+            local destinationDependencyID=$(curl -s -H "Authorization: Bearer ${token}" -X GET ${dependencyURL} | jq -r --arg queryname "${destinationDependencyName}" '.results[] | select(.name == $queryname).id')
+            if [ -z "${destinationDependencyID}" ]
+            then
+            echo "      Dependency ${destinationDependencyName} id could not be located ...terminating" >&2
+            exit 4
+            else
+            echo "      Dependency ${destinationDependencyName} id is ${destinationDependencyID}"
+            echo "      updating ${queryDestinationFile}"
+            jq --arg id "${destinationDependencyID}" --arg name "${dependencyName}" '(.options.parameters[]| select(.queryId == $name).queryId) = $id' ${queryDestinationFile} \
+              > ${queryDestinationFile}.tmp && mv ${queryDestinationFile}.tmp ${queryDestinationFile}
+            fi
+
+          done
+          fi
+
+          # Deploy query
+          echo "   Checking if query ${destqueryname} already exists"
+          local url="${databricksurl}/api/2.0/preview/sql/queries?q=${destqueryname}"
+          local existingID=$(curl -s -H "Authorization: Bearer ${token}" -X GET ${url} | jq -r --arg queryname "${destqueryname}" '.results[] | select(.name == $queryname).id')
+          if [ -z "${existingID}" ]
+          then
+          echo "   deploying new query ${destqueryname}"
+          curl -s -H "Authorization: Bearer ${token}" -X POST ${databricksurl}/api/2.0/preview/sql/queries -d @${queryDestinationFile} > ${queryDestinationFile}.result
+          local deployedQueryID=$(jq -r '.id' ${queryDestinationFile}.result)
+          echo "   query ${destqueryname} deployed with id ${deployedQueryID}"
+          else
+          echo "   updating existing query ${destqueryname} with id ${existingID}"
+          curl -s -H "Authorization: Bearer ${token}" -X POST ${databricksurl}/api/2.0/preview/sql/queries/${existingID} -d @${queryDestinationFile} > ${queryDestinationFile}.result
+          local deployedQueryID=$(jq -r '.id' ${queryDestinationFile}.result)
+          echo "   query ${destqueryname} updated with id ${deployedQueryID}"
+          fi
+
+          #Update permissions
+          echo "   updating Query ACL"
+          local existingACL=$(curl -s -u "token:${token}" -X GET $databricksurl/api/2.0/preview/sql/permissions/queries/${deployedQueryID} | jq -r '.')
+          local newACL=$(echo ${existingACL}| jq -r 'del (.object_id) | del (.object_type) | del (.access_control_list[] | select(.group_name == "admins"))')
+          echo ${newACL} | jq -r --argjson adminacl "${adminPermissions}" '.access_control_list += [$adminacl]' > ${queryDestinationFile}.acl
+          local objectid=$(curl -s -u "token:${token}" -X POST $databricksurl/api/2.0/preview/sql/permissions/queries/${deployedQueryID} -d @${queryDestinationFile}.acl | jq -r '.object_id')
+
+          if [ "${objectid}" == "null" ]
+          then
+          echo "... could not update ACL on query ${destqueryname} with ID ${deployedQueryID}" >&2
+          exit 5
+          else
+          echo "   updated ACL for ${objectid}"
+          fi
+      }
+
+
+      ########### Main
+      while getopts c:s:t:u:e: flag
+      do
+        case "${flag}" in
+          c) configFile=${OPTARG};;
+          s) soruceDir=${OPTARG};;
+          t) token=${OPTARG};;
+          u) databricksurl=${OPTARG};;
+          e) envName=${OPTARG};;
+        esac
+      done
+
+      # Datasource ID retreival and validation
+      destinationDatasourceName=$(jq -r --arg envName "$envName" '.environments[$envName].data_source_name' $configFile)
+      echo "Destination datasoruce name as ${dataSourceFieldName}=${destinationDatasourceName}"
+      echo "Validating datasource name ${destinationDatasourceName}"
+      destinationDatasourceID=$(curl -s -H "Authorization: Bearer ${token}" -X GET ${databricksurl}/api/2.0/preview/sql/data_sources | jq -r --arg name ${destinationDatasourceName} '.[] | select(.name == $name).id')
+      if [ -z "$destinationDatasourceID" ]
+      then
+          echo "   Datasource with name ${destinationDatasourceName} not found" >&2
+          exit 2
+      else
+          echo "Destination datasoruce ID is ${destinationDatasourceID}"
+      fi
+
+      destDir="tmpdst"
+      rm -rf ${destDir}
+      mkdir ${destDir}
+
+      adminPermissions='{"group_name": "admins","permission_level": "CAN_EDIT"}'
+
+      jq -c '.queries[]' $configFile |
+      while IFS=$"\n" read -r qurydefinition; do
+          name=$(echo "$qurydefinition" | jq -r '.name')
+          echo "Processing "$name
+          deployquery $name
+      done
+      EOF
+    displayName: 'create sql getter script'
+
+  - bash: |
+      cat > ${{ parameters.scrpitsDirectoryName }}/pulljobs.sh <<- "EOF"
+      #set -o xtrace
+      ########### Main
+      while getopts c:p: flag
+      do
+          case "${flag}" in
+              c) configFile=${OPTARG};;
+              p) profile=${OPTARG};;
+          esac
+      done
+
+      rm -rf jobs/src
+      rm -rf *.json
+      mkdir jobs/src
+
+      databricks jobs configure --version=2.1 --profile ${profile}
+      echo "Getting list of existing jobs for 2.0 API"
+      databricks jobs list --output JSON --profile ${profile} --version 2.0 > jobs2.0.json
+      echo "Getting list of existing jobs for 2.1 API"
+      databricks jobs list --output JSON --profile ${profile} --version 2.1 > jobs2.1.json
+      jq -c -r '.jobs[]' $configFile |
+      while IFS=$"\n" read -r jobname; do
+        echo "Processing job ${jobname}"
+        apiversion="2.1"
+        jobid=$(jq -r --arg jobname ${jobname} '.jobs[] | select (.settings.name == $jobname).job_id' jobs2.1.json)
+
+        if [ -z "${jobid}" ]
+        then
+            echo "   Could not find job id for job ${jobname} using API 2.1... trying API 2.0"
+            apiversion="2.0"
+            jobid=$(jq -r --arg jobname ${jobname} '.jobs[] | select (.settings.name == $jobname).job_id' jobs2.0.json)
+
+            if [ -z "${jobid}" ]
+            then
+              echo "   Could not find job id for job ${jobname} using API 2.0. Check job name and permissions" >&2
+              exit 2
+            else
+              echo "   Job id of ${jobname} is ${jobid} using API 2.0"
+              apiversion="2.0"
+            fi
+        else
+            echo "   Job id of ${jobname} is ${jobid} using API 2.1"
+        fi
+
+        jobFilePath="jobs/src/${jobname}.json"
+        echo "   Saving job config to file ${jobFilePath}"
+        databricks jobs get --job-id ${jobid} --profile ${profile} --version ${apiversion} | jq -r '.settings | .job_clusters = []' > ${jobFilePath}
+      done
+
+      rm -rf *.json
+      EOF
+    displayName: 'create jobs getter script'
+
+  - bash: |
+      cat > ${{ parameters.scrpitsDirectoryName }}/deployjobs.sh <<- "EOF"
+      #set -o xtrace
+      ########### Main
+      while getopts c:e:b:s:p: flag
+      do
+          case "${flag}" in
+              c) clustername=${OPTARG};;
+              e) envName=${OPTARG};;
+              b) branch=${OPTARG};;
+              s) soruceDir=${OPTARG};;
+              p) profile=${OPTARG};;
+          esac
+      done
+
+      databricks jobs configure --version=2.1 --profile  ${profile}
+      envString="_${envName}_"
+
+      mkdir tmp
+      echo "getting clusterid for $clustername"
+      databricks clusters list  --output JSON --profile  ${profile} > tmp/clusters.json
+      clusterid=$(jq -r --arg clustername "$clustername" '.clusters[] | select (.cluster_name == $clustername).cluster_id' tmp/clusters.json)
+
+      if [ -z "${clusterid}" ]
+      then
+          echo "Could not find cluster ${clustername}...exiting" >&2
+          exit 2
+      else
+          echo "Cluster id = $clusterid"
+      fi
+
+      echo "Pulling existing jobs list"
+      databricks jobs list --output JSON --profile  ${profile} > tmp/jobs.json
+
+      JOBS="${soruceDir}/*.json"
+
+      for srcjobfile in $JOBS
+      do
+          echo "Processing $srcjobfile file..."
+          jobname=$(jq -r '.name' $srcjobfile)
+          # Replace the envname in project-env-job
+          newjobname=${jobname/_dev_/$envString}
+
+          echo "  Target job name = ${newjobname}"
+          dstJobFile="${newjobname}.json"
+
+          echo "  creating ${newjobname} config file"
+          jq --arg newjobname "${newjobname}" '.name = $newjobname' ${srcjobfile} > ${dstJobFile}
+          echo "  updating cluster ID to ${clusterid}"
+          jq --arg clusterid "${clusterid}" '.tasks[].existing_cluster_id = $clusterid' ${dstJobFile} > ${dstJobFile}.tmp && mv ${dstJobFile}.tmp ${dstJobFile}
+
+          echo "  updating notebook branch to ${branch}"
+          jq --arg branch "$branch" '.tasks[].notebook_task.notebook_path |= sub("develop"; $branch)' ${dstJobFile} > ${dstJobFile}.tmp && mv ${dstJobFile}.tmp ${dstJobFile}
+
+
+          echo "  Deploying ${dstJobFile}"
+          echo "  Checking if job ${newjobname} exists"
+          jobid=$(jq -r --arg jobname "${newjobname}" '.jobs[] | select (.settings.name == $jobname) | .job_id' tmp/jobs.json)
+
+          if [ -z "$jobid" ]
+          then
+                  echo "  creating new job ${newjobname}"
+                  databricks jobs create --json-file ${dstJobFile} --profile  ${profile}
+          else
+                  echo "  updating existing job $newjobname with id ${jobid}"
+                  databricks jobs reset --job-id $jobid --json-file ${dstJobFile} --profile  ${profile}
+          fi
+      done
+      EOF
+    displayName: 'create jobs deployment script'

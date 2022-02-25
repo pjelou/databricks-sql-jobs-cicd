@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------------------------------------------------
+# Template for pulling sql queries from a parameter file from DataBricks and pushing to git
+# ---------------------------------------------------------------------------------------------------------------------
+parameters:
+  - name: databricksToken
+    type: string
+    default: ''
+
+  - name: dataBricksURL
+    type: string
+    default: ''
+
+  - name: jobsConfigFilePath
+    type: string
+    default: ''
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      architecture: 'x64'
+
+  - bash: |
+      python -m pip install --upgrade pip
+      pip install setuptools wheel
+    displayName: 'install python tools'
+
+  - bash: |
+      pip install databricks-cli
+    displayName: 'install databricks-cli'
+
+  - task: riserrad.azdo-databricks.azdo-databricks-configuredatabricks.configuredatabricks@0
+    displayName: 'configure databricks cli'
+    inputs:
+      url:  '${{ parameters.dataBricksURL}}'
+      token: '${{ parameters.databricksToken}}'
+
+  - bash: |
+      branchName=$(echo  $(Build.SourceBranch) | cut -f 3- -d '/')
+      git checkout $branchName
+    displayName: 'change branch'
+
+  - template: createDatabricksScripts.yml
+    parameters:
+      scrpitsDirectoryName: 'devops_databricks_scripts'
+
+  - task: Bash@3
+    displayName: 'pull databricks josbs'
+    inputs:
+      targetType: filePath
+      filePath: devops_databricks_scripts/pulljobs.sh
+      arguments: '-c "${{ parameters.jobsConfigFilePath}}" -p "AZDO"'
+      failOnStderr: true
+
+  - bash: |
+      rm -rf devops_databricks_scripts
+    displayName: 'delete devops scripts directory'
+
+  - bash: |
+      git config  user.email "pipeline@na.com"
+      git config  user.name "AZDO Pipeline"
+      git pull
+      git add -A
+      git commit -am "Databricks jobs [skip ci]"
+      git push
+    displayName: 'push to git'
